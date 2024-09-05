@@ -1,0 +1,54 @@
+variables:
+  IMAGE_NAME: oluwasanmivic123/cicd
+  IMAGE_TAG: latest
+
+stages:  
+  - build
+  - deploy
+
+
+build_image:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:19.03.12-dind
+  variables:
+    # bind docker image and service
+    DOCKER_TLS_CERTDIR: "/certs"
+  before_script:
+    - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+  script:
+    # build and push docker image to registry
+    - docker build -t $IMAGE_NAME:$IMAGE_TAG .
+    - docker push $IMAGE_NAME:$IMAGE_TAG
+
+deploy_image:
+  stage: deploy
+  image: ubuntu:latest
+  before_script:
+    # update and install awscli, openssh-client to allow ssh into your instance on port 22
+    - apt-get update
+    - apt-get install -y unzip curl openssh-client
+    - apt-get install curl
+    - curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+    - unzip awscliv2.zip
+    - ./aws/install
+   # copy key and change permission
+    - mkdir -p ~/.ssh
+    - echo "$SSH_KEY" | tr -d '\r' > ~/.ssh/key.pem
+    - chmod 600 ~/.ssh/key.pem
+  script:
+    # login to docker to pull your image
+    - |
+      ssh -o StrictHostKeyChecking=no -i ~/.ssh/key.pem ubuntu@$PUBLIC_IP "
+      # aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID &&
+      # aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY &&
+      # #aws configure set region $AWS_DEFAULT_REGION &&
+      sudo apt-get update &&
+      sudo apt-get install -y docker.io &&
+      sudo docker login -u $DOCKER_USERNAME -p $DOCKER_PASSWORD &&
+      sudo docker pull $IMAGE_NAME:$IMAGE_TAG &&
+      sudo docker run -d -p 3000:3000 $IMAGE_NAME:$IMAGE_TAG
+      "
+
+

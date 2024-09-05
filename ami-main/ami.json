@@ -1,0 +1,94 @@
+{
+  "variables": {
+    "aws_access_key": "{{env `AWS_ACCESS_KEY`}}",
+    "aws_secret_key": "{{env `AWS_SECRET_ACCESS_KEY`}}",
+    "region": "us-east-2",
+    "ssh_username": "ubuntu",
+    "base_ami": "ami-0862be96e41dcbf74",
+    "instance_type": "t2.micro",
+    "docker_username": "{{env `DOCKER_USERNAME`}}",
+    "docker_password": "{{env `DOCKER_PASSWORD`}}",
+    "ssh_keypair_name": "packerr",
+    "ssh_private_key_file": "/home/victoria/Desktop/packerr.pem",
+    "security_group_id": "sg-07294443dfde713e2",
+    "iam_instance_profile": "packer",
+    "aws_account_id_to_share_with": "{{env `ACCOUNT_ID`}}"
+  },
+
+  "builders": [
+    {
+      "type": "amazon-ebs",
+      "ami_name": "packer-base-{{timestamp}}",
+      "instance_type": "{{user `instance_type`}}",
+      "region": "{{user `region`}}",
+      "source_ami": "{{user `base_ami`}}",
+      "subnet_id": "subnet-031972cd6471fb2b8",
+      "associate_public_ip_address": true,
+      "ssh_username": "{{user `ssh_username`}}",
+      "ssh_keypair_name": "{{user `ssh_keypair_name`}}",
+      "ssh_private_key_file": "{{user `ssh_private_key_file`}}",
+      "security_group_id": "{{user `security_group_id`}}",
+      "iam_instance_profile": "{{user `iam_instance_profile`}}",
+      "user_data": "#!/bin/bash\n/tmp/startapp.sh",
+      "tags": {
+        "Name": "Packer Builder"
+      }
+    }
+  ],
+
+  "provisioners": [
+    {
+      "type": "file",
+      "source": "startapp.sh",
+      "destination": "/tmp/startapp.sh"
+    },
+    {
+      "type": "file",
+      "source": "docker.sh",
+      "destination": "/tmp/docker.sh"
+    },
+    {
+      "type": "shell",
+      "inline": [
+        "chmod +x /tmp/docker.sh",
+        "/tmp/docker.sh"
+      ]
+    },
+    {
+      "type": "shell",
+      "inline": [
+        "sudo apt-get update",
+        "sudo apt-get upgrade -y",
+        "sudo apt-get install -y openssh-server",
+        "sudo systemctl enable ssh",
+        "sudo systemctl start ssh",
+        "sudo sed -i 's/PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/ssh_config",
+        "sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/ssh_config",
+        "sudo systemctl restart ssh"
+      ]
+    },
+    {
+      "type": "shell",
+      "inline": [
+        "export DEBIAN_FRONTEND=noninteractive",
+        "sudo apt-get update",
+        "sudo apt-get install -y docker-ce",
+        "sudo systemctl start docker",
+        "sudo usermod -a -G docker ubuntu",
+        "sudo systemctl enable docker.service",
+        "sudo systemctl start docker.service",
+        "sudo apt-get install -y git",
+        "echo {{user `docker_password`}} | sudo docker login -u {{user `docker_username`}} --password-stdin",
+        "sudo chmod 666 /var/run/docker.sock",
+        "sudo docker pull nginx"
+      ]
+    },
+    {
+      "type": "shell",
+      "inline": [
+        "sudo mv /tmp/startapp.sh /var/lib/cloud/scripts/per-instance/startapp.sh",
+        "sudo chmod +x /var/lib/cloud/scripts/per-instance/startapp.sh"
+      ]
+    }
+  ]
+}
